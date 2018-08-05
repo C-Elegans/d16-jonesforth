@@ -675,9 +675,9 @@ ld r2,[var_STATE]
 cmp r2, 1
 jmp.ne 4f			; are we executing?
 ; compile the word
-push r0
+push r1
 call _COMMA
-pop r0
+pop r1
 ld r2,[interpret_is_lit]
 test r2, r2
 jmp.eq 3f			; Is this a literal
