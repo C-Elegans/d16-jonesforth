@@ -236,6 +236,11 @@ defword(QUIT,4,0,QUIT)
 
 defvar(STATE,5,0,STATE,0)
 defvar(DP,5,0,DP,0)
+
+defcode(HERE,4,0,HERE)
+PUSH(var_DP)
+NEXT
+
 defvar(S0,2,0,S0,0)
 defvar(BASE,4,0,BASE,10)
 
@@ -414,7 +419,7 @@ defword(DFA,3,0,TDFA)
 .dw INCR4
 .dw EXIT
 
-defcode(`(FIND)',6,0,PAREN_FIND)
+defcode(`FIND',4,0,PAREN_FIND)
 POP(r1)
 POP(r0)
 call _FIND
@@ -575,7 +580,7 @@ defword(HIDE,4,0,HIDE)
 .dw HIDDEN
 .dw EXIT
 
-defcode(['],3,0,BRACKET_TICK)
+defcode(',1,0,BRACKET_TICK)
 ld r0,[r5]
 add r5, 2
 PUSH(r0)
@@ -721,6 +726,13 @@ defword(/,1,0,DIV)
 .dw SWAP
 .dw DROP
 .dw EXIT
+
+defcode(CHAR,4,0,CHAR)
+call _WORD			; r2 = address, r0 = length
+ld.b r0, [r2]
+PUSH(r0)
+NEXT
+
 
 
 defvar(LATEST,6,0,LATEST,link) ; change this to the last thing defined
