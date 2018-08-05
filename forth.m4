@@ -43,10 +43,10 @@ define(`link', `0')
 define(`defword', `
 .global name_$4:
 	.dw link
-	define(`link', name_$4)
 	.db eval(`$2+$3')
 	.ascii "$1"
 	
+	define(`link', 'name_$4`)
 .global $4:
 	.dw DOCOL')
 
@@ -108,6 +108,12 @@ sub r1, r0
 PUSH(r1)
 NEXT
 
+defcode(INCR4,5,0,INCR4)
+POP(r0)
+add r0, 4
+PUSH(r0)
+NEXT
+
 defcode(=,1,0,EQU)
 POP(r0)
 POP(r1)
@@ -147,7 +153,7 @@ POP(r1)
 or r0, r1
 PUSH(r1)
 NEXT
-defcode(XOR,3,0,_XOR)
+defcode(XOR,3,0,myXOR)
 POP(r0)
 POP(r1)
 xor r0, r1
@@ -182,13 +188,13 @@ ld r0,[r0]
 PUSH(r0)
 NEXT
 
-defcode(C!,1,0,STORE)
+defcode(C!,2,0,CSTORE)
 POP(r1)
 POP(r0)
 st.b [r1], r0
 NEXT
 
-defcode(C@,1,0,FETCH)
+defcode(C@,2,0,CFETCH)
 POP(r0)
 ld.b r0,[r0]
 PUSH(r0)
@@ -201,14 +207,15 @@ NEXT
 var_$4:
 .dw $5')
 
-
-defcode(QUIT,4,0,QUIT)
-POP(r0)
-kill
+defword(QUIT,4,0,QUIT)
+.dw RZ
+.dw RSPSTORE
+.dw INTERPRET
+.dw BRANCH
+.dw -4
 
 defvar(STATE,5,0,STATE,0)
 defvar(DP,5,0,DP,0)
-defvar(LATEST,6,0,LATEST,name_QUIT) ; change this to the last thing defined
 defvar(S0,2,0,S0,0)
 defvar(BASE,4,0,BASE,10)
 
@@ -324,6 +331,15 @@ ret
 	push r4
 	mov r4, r3
 	mov r1, 0
+4:
+	ld.b r0, [r3]
+	push 0
+	cmp r0, '-'
+	jmp.ne 2f
+	pop r0
+	push 1
+	add r3, 1
+	
 2:
 	ld.b r0, [r3]
 	cmp r0, '0'
@@ -346,17 +362,265 @@ ret
 	mov r2, r3
 	mov r0, r1
 
+	pop r1
+	test r1, r1
+	jmp.eq 1f
+	neg r0
+1:	
 	pop r4
 	pop r1
 	jmp r1
+defcode(>CFA,4,0,TCFA)
+POP(r0)
+call _TCFA
+PUSH(r0)
+NEXT
+_TCFA:
+mov r1,0
+add r0,2			; Skip link pointer
+ld.b r1,[r0]			; Load flags byte
+add r0, 1			; skip the flags byte
+and r1,F_LENMASK		; Extract the length
+add r0,r1			; Skip the length
+add r0,1			; Align the address to 2
+and r0,0xfffe
+ret
+
+defword(DFA,3,0,TDFA)
+.dw TCFA
+.dw INCR4
+.dw EXIT
+
+defcode(`(FIND)',6,0,PAREN_FIND)
+POP(r1)
+POP(r0)
+call _FIND
+PUSH(r0)
+NEXT
+
+_FIND:				; r1 = length, r0 = address
+pushlr
+push r4
+mov r2, r0
+ld r4,[var_LATEST]
+1:
+test r4, r4
+jmp.eq 4f
+ld.b r3,[r4+2]
+and r3,eval(F_HIDDEN|F_LENMASK)
+cmp r3, r1			; Lengths the same?
+jmp.ne 2f
+
+push r1
+push r2
+mov r0, r4
+add r0, 3
+mov r1, r3
+call strcmp
+pop r2
+pop r1
+test r0, r0
+jmp.ne 2f
+mov r0, r4
+pop r4
+pop r1
+jmp r1
+
+2:
+ld r4,[r4]
+jmp 1b
+
+4:
+pop r4
+mov r0, 0
+pop r1
+jmp r1
 
 
+
+
+
+
+strcmp: ; r0 = str0, r1 = length, r2 = str1
+push r3
+push r4
+mov r3,r0
+1:
+ld.b r0, [r3]
+ld.b r4, [r2]
+sub r0, r4
+jmp.ne 2f
+sub r1, 1
+jmp.eq 2f
+jmp 1b
+2:
+pop r4
+pop r3
+ret
+
+
+
+defcode(`HEADER,',7,0,HEADER_COMMA)
+POP(r2)
+POP(r3)
+ld r1,[var_DP]
+ld r0,[var_LATEST]
+st [r1], r0
+add r1,2
+st.b [r1],r2
+add r1, 1
+
+1:
+ld.b r0, [r3]
+st.b [r1], r0
+add r1, 1
+add r3, 1
+sub r2, 1
+jmp.ne 1b
+
+add r1,1
+and r1,0xfffe
+ld r0,[var_DP]
+st [var_LATEST], r0
+st [var_DP], r1
+NEXT
+
+defcode(`,',1,0,COMMA)
+POP(r0)
+call _COMMA
+NEXT
+_COMMA:
+ld r1, [var_DP]
+st [r1],r0
+add r1,2
+st [var_DP], r1
+ret
+
+defcode([,1,F_IMMED,LBRAC)
+mov r0,0
+st [var_STATE],r0
+NEXT
+
+defcode(],1,0,RBRAC)
+mov r0,1
+st [var_STATE], r1
+NEXT
+
+defword(:,1,0,COLON)
+.dw WORD
+.dw HEADER_COMMA
+.dw LIT
+.dw DOCOL
+.dw COMMA
+.dw LATEST
+.dw FETCH
+.dw HIDDEN
+.dw RBRAC
+.dw EXIT
+
+defword(;,1,F_IMMED,SEMICOLON)
+.dw LIT
+.dw EXIT
+.dw COMMA
+.dw LATEST
+.dw FETCH
+.dw HIDDEN
+.dw LBRAC
+.dw EXIT
+
+defcode(IMMEDIATE,9,F_IMMED,IMMEDIATE)
+ld r0,[var_LATEST]
+add r0,2
+ld.b r1,[r0]
+xor r1,F_IMMED
+st.b [r0], r1
+NEXT
+
+defcode(HIDDEN,6,0,HIDDEN)
+POP(r0)
+add r0, 2
+ld.b r1,[r0]
+xor r1,F_HIDDEN
+st.b [r0], r1
+NEXT
+
+defword(HIDE,4,0,HIDE)
+.dw WORD
+.dw PAREN_FIND
+.dw HIDDEN
+.dw EXIT
+
+defcode(['],3,0,BRACKET_TICK)
+ld r0,[r5]
+add r5, 2
+PUSH(r0)
+NEXT
+
+defcode(BRANCH,6,0,BRANCH)
+ld r0, [r5]
+add r5, r0
+NEXT
+
+defcode(0BRANCH,7,0,ZBRANCH)
+POP(r0)
+test r0, r0
+jmp.eq code_BRANCH
+add r5, 2
+NEXT
+
+defcode(LITSTRING,9,0,LITSTRING)
+; This needs to be looked at...
+ld r0, [r5]
+add r5, 2
+PUSH(r5)
+PUSH(r0)
+add r5,r0
+add r5, 1
+and r5, 0xfffe
+NEXT
+
+defcode(TELL,4,0,TELL)
+POP(r2) 			; Length of string
+POP(r1)				; Address of string
+1:
+ld.b r0, [0xff03]
+test r0, 1
+jmp.eq 1b
+ld.b r0, [r1]
+st.b [0xff02], r0
+add r1, 1
+sub r2, 1
+jmp.ne 1b
+NEXT
+
+DODOES:
+ld r1,[r0+2]
+test r0, r0
+jmp.eq 1f
+sub r7,2
+st [r7], r5
+ld r5,[r0+2]
+1:
+add r0,4
+PUSH(r0)
+NEXT
+
+defcode(KILL,4,0,_KILL)
+POP(r0)
+kill
+
+
+defcode(INTERPRET,9,0,INTERPRET)
+call _WORD			; Returns r0 = length, r2 = base address
+NEXT
+
+
+defvar(LATEST,6,0,LATEST,name_INTERPRET) ; change this to the last thing defined
 
 prog:
 	.dw WORD
-	.dw NUMBER
-	.dw DROP
-	.dw QUIT
+	.dw PAREN_FIND
+	.dw _KILL
 
 
 start:

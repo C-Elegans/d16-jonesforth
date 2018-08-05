@@ -2,3 +2,6 @@
 *.o
 forth.d16
 *~
+*.lst
+*.out
+out.txt
