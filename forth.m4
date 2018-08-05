@@ -365,6 +365,8 @@ ret
 	ld.b r0, [r3]
 	cmp r0, '0'
 	jmp.l 3f
+	cmp r0, '9'
+	jmp.g 3f
 	push r0
 	push r3
 	mov r0, 10
@@ -379,8 +381,8 @@ ret
 	jmp.ne 2b
 
 3:
-	sub r3, r4
-	mov r2, r3
+	sub r4, r3
+	mov r2, r4
 	mov r0, r1
 
 	pop r1
@@ -462,7 +464,7 @@ jmp r1
 
 
 
-strcmp: ; r0 = str0, r1 = length, r2 = str1
+.global strcmp: ; r0 = str0, r1 = length, r2 = str1
 push r3
 push r4
 mov r3,r0
@@ -471,6 +473,8 @@ ld.b r0, [r3]
 ld.b r4, [r2]
 sub r0, r4
 jmp.ne 2f
+add r3, 1
+add r2, 1
 sub r1, 1
 jmp.eq 2f
 jmp 1b
@@ -656,7 +660,7 @@ push r1
 call _TCFA
 pop r1
 test r1, F_IMMED
-jmp.ne 4f
+jmp.ne 7f
 jmp 2f
 
 1:				; Not found in dictionary
@@ -702,7 +706,6 @@ NEXT
 mov r1, msg
 mov r2, 12
 call _TELL
-kill
 NEXT
 
 msg:
@@ -715,6 +718,7 @@ interpret_is_lit:
 
 defword(/,1,0,DIV)
 .dw DIVMOD
+.dw SWAP
 .dw DROP
 .dw EXIT
 
