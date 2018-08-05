@@ -1,4 +1,4 @@
-forth.bin: forth.o numeric.o
+forth.bin: forth.o numeric.o data.o
 	d16-ld -o $@ -l lkr.lst $^ 
 %.o: %.d16
 	d16 -o $@ $<

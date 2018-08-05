@@ -1,7 +1,7 @@
 .global
 _mul: ;takes 2 parameters
 mov r3,r0
-xor r0,r0
+mov r0, 0
 1:
 	cmp r1,0
 	jmp.eq 3f

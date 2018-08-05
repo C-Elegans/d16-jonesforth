@@ -7,8 +7,8 @@ nop
 	jmp start
 define(`NEXTi', `ld r0, [r5]
 	add r5, 2
-	ld r0, [r0]
-	jmp r0')
+	ld r1, [r0]
+	jmp r1')
 define(`NEXT', `jmp next')
 next:
 	NEXTi
@@ -19,19 +19,24 @@ define(`POPR', `pop $1, r7')
 define(`PUSH', `push $1, r6')
 define(`POP', `pop $1, r6')
 
-DOCOL:
+.global DOCOL:
 	PUSHR(r5)
 	add r0, 2
 	mov r5, r0
 	NEXT
-
+start:
 main:
 	mov r7, 0xfe00
 	mov r6, 0xfb00
 	st [var_S0], r7
-	;call set_up_data_segment
+	call set_up_data_segment
 	mov r5, cold_start
 	NEXT
+
+set_up_data_segment:
+	mov r0, data
+	st [var_DP], r0
+	ret
 
 cold_start:
 	.dw QUIT
@@ -43,7 +48,7 @@ define(`link', `0')
 define(`defword', `
 .global name_$4:
 	.dw link
-	.db eval(`$2+$3')
+	.db eval(len(`$1')+$3)
 	.ascii "$1"
 	
 	define(`link', 'name_$4`)
@@ -54,7 +59,7 @@ define(`defcode', `
 .global name_$4:
 	.dw link
 	define(`link', `name_$4')
-	.db eval(`$2+$3')
+	.db eval(len(`$1')+$3)
 	.ascii "$1"
 	
 .global $4:
@@ -106,6 +111,21 @@ POP(r0)
 POP(r1)
 sub r1, r0
 PUSH(r1)
+NEXT
+
+defcode(*,1,0,MUL)
+POP(r0)
+POP(r1)
+call _mul
+PUSH(r0)
+NEXT
+
+defcode(/MOD,4,0,DIVMOD)
+POP(r1)
+POP(r0)
+call _div
+PUSH(r1)
+PUSH(r0)
 NEXT
 
 defcode(INCR4,5,0,INCR4)
@@ -330,6 +350,7 @@ ret
 	pushlr
 	push r4
 	mov r4, r3
+	add r4, r2
 	mov r1, 0
 4:
 	ld.b r0, [r3]
@@ -347,7 +368,7 @@ ret
 	push r0
 	push r3
 	mov r0, 10
-	call _mul 
+	call _mul
 	mov r1, r0
 	pop r3
 	pop r0
@@ -503,7 +524,7 @@ NEXT
 
 defcode(],1,0,RBRAC)
 mov r0,1
-st [var_STATE], r1
+st [var_STATE], r0
 NEXT
 
 defword(:,1,0,COLON)
@@ -582,16 +603,18 @@ NEXT
 defcode(TELL,4,0,TELL)
 POP(r2) 			; Length of string
 POP(r1)				; Address of string
-1:
+call _TELL
+NEXT
+_TELL:
 ld.b r0, [0xff03]
 test r0, 1
-jmp.eq 1b
+jmp.eq _TELL
 ld.b r0, [r1]
 st.b [0xff02], r0
 add r1, 1
 sub r2, 1
-jmp.ne 1b
-NEXT
+jmp.ne _TELL
+ret
 
 DODOES:
 ld r1,[r0+2]
@@ -607,27 +630,99 @@ NEXT
 
 defcode(KILL,4,0,_KILL)
 POP(r0)
+POP(r1)
+ld r2, [var_STATE]
 kill
 
 
-defcode(INTERPRET,9,0,INTERPRET)
+defcode(INTERPRET,9,0,INTERPRET) 
 call _WORD			; Returns r0 = length, r2 = base address
+mov r1, 0
+st [interpret_is_lit], r1
+mov r1, r0
+mov r0, r2
+push r2
+push r1
+call _FIND
+pop r1
+pop r2
+
+test r0, r0			; Did we find the word?
+jmp.eq 1f
+
+; We found the word
+ld.b r1,[r0+2]
+push r1
+call _TCFA
+pop r1
+test r1, F_IMMED
+jmp.ne 4f
+jmp 2f
+
+1:				; Not found in dictionary
+mov r3, 1
+st [interpret_is_lit], r3
+mov r3, r2			;base address
+mov r2, r1			;string length
+call _NUMBER			; r0 = parsed number, r2 = unparsed characters
+test r2, r2
+jmp.ne 6f
+mov r1, r0
+mov r0, LIT
+
+2:
+ld r2,[var_STATE]
+cmp r2, 1
+jmp.ne 4f			; are we executing?
+; compile the word
+push r0
+call _COMMA
+pop r0
+ld r2,[interpret_is_lit]
+test r2, r2
+jmp.eq 3f			; Is this a literal
+; Yes, compile in the number
+mov r0, r1
+call _COMMA
+3:
+NEXT
+7:
+4:				; Interpret mode
+ld r3,[interpret_is_lit]
+test r3, r3
+jmp.ne 5f			; Is this a literal
+ld r1, [r0]
+jmp r1
+
+5:
+PUSH(r1)
 NEXT
 
+6:				; parse error
+mov r1, msg
+mov r2, 12
+call _TELL
+kill
+NEXT
 
-defvar(LATEST,6,0,LATEST,name_INTERPRET) ; change this to the last thing defined
+msg:
+.ascii "Parse Error\n"
+
+
+NEXT
+interpret_is_lit:
+.dw 0
+
+defword(/,1,0,DIV)
+.dw DIVMOD
+.dw DROP
+.dw EXIT
+
+
+defvar(LATEST,6,0,LATEST,link) ; change this to the last thing defined
 
 prog:
-	.dw WORD
-	.dw PAREN_FIND
 	.dw _KILL
 
 
-start:
-	mov r7, 0xfe00
-	mov r6, 0xfb00
-	PUSH(3)
-	PUSH(4)
-	mov r5, prog
-	jmp next
 	
