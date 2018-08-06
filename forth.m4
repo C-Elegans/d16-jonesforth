@@ -28,14 +28,18 @@ start:
 main:
 	mov r7, 0xfe00
 	mov r6, 0xfb00
-	st [var_S0], r7
+	st [var_S0], r6
 	call set_up_data_segment
 	mov r5, cold_start
 	NEXT
 
 set_up_data_segment:
+	ld r0, [var_DP]
+	test r0, r0
+	jmp.ne 1f
 	mov r0, data
 	st [var_DP], r0
+	1:
 	ret
 
 cold_start:
@@ -60,7 +64,7 @@ define(`defcode', `
 	.dw link
 	define(`link', `name_$4')
 	.db eval(len(`$1')+$3)
-	.ascii "$1"
+	.ascii "`$1'"
 	
 .global $4:
 	.dw code_$4
@@ -82,6 +86,14 @@ NEXT
 defcode(DUP,3,0,DUP)
 ld r0, [r6]
 PUSH(r0)
+NEXT
+
+defcode(?DUP,4,0,QDUP)
+ld r0,[r6]
+test r0, r0
+jmp.eq 1f
+PUSH(r0)
+1:
 NEXT
 
 defcode(OVER,4,0,OVER)
@@ -152,7 +164,7 @@ neg r0
 PUSH(r0)
 NEXT
 
-defcode(LT,2,0,LT)
+defcode(<,1,0,LT)
 POP(r0)
 POP(r1)
 cmp r1, r0
@@ -165,19 +177,19 @@ defcode(AND,3,0,_AND)
 POP(r0)
 POP(r1)
 and r0, r1
-PUSH(r1)
+PUSH(r0)
 NEXT
 defcode(OR,2,0,_OR)
 POP(r0)
 POP(r1)
 or r0, r1
-PUSH(r1)
+PUSH(r0)
 NEXT
 defcode(XOR,3,0,myXOR)
 POP(r0)
 POP(r1)
 xor r0, r1
-PUSH(r1)
+PUSH(r0)
 NEXT
 
 defcode(INVERT,6,0,INVERT)
@@ -207,6 +219,14 @@ POP(r0)
 ld r0,[r0]
 PUSH(r0)
 NEXT
+defcode(+!,2,0,ADDSTORE)
+POP(r1)
+POP(r0)
+ld r2,[r1]
+add r2, r0
+st [r1], r2
+NEXT
+
 
 defcode(C!,2,0,CSTORE)
 POP(r1)
@@ -245,15 +265,16 @@ defvar(S0,2,0,S0,0)
 defvar(BASE,4,0,BASE,10)
 
 define(`defconst', `
-defcode($1, $2, $3, $4)
+defcode(`$1', $2, $3, $4)
 PUSH($5)
 NEXT')
 
 defconst(VERSION,7,0,VERSION,1)
 defconst(R0,2,0,RZ,0xfe00)
-defconst(F_IMMED,7,0,__F_IMMED,F_IMMED)
-defconst(F_HIDDEN,8,0,__F_HIDDEN,F_HIDDEN)
-defconst(F_LENMASK,9,0,__F_LENMASK,F_LENMASK)
+defconst(DOCOL,5,0,__DOCOL,DOCOL)
+defconst(`F_IMMED',7,0,__F_IMMED,F_IMMED)
+defconst(`F_HIDDEN',8,0,__F_HIDDEN,F_HIDDEN)
+defconst(`F_LENMASK',9,0,__F_LENMASK,F_LENMASK)
 
 defcode(>R,2,0,TOR)
 POP(r0)
@@ -514,6 +535,8 @@ ld r0,[var_DP]
 st [var_LATEST], r0
 st [var_DP], r1
 NEXT
+defcode(CREATE,6,0,CREATE)
+jmp code_HEADER_COMMA
 
 defcode(`,',1,0,COMMA)
 POP(r0)
@@ -671,9 +694,13 @@ jmp 2f
 1:				; Not found in dictionary
 mov r3, 1
 st [interpret_is_lit], r3
+push r2
+push r1
 mov r3, r2			;base address
 mov r2, r1			;string length
 call _NUMBER			; r0 = parsed number, r2 = unparsed characters
+pop r1
+pop r3
 test r2, r2
 jmp.ne 6f
 mov r1, r0
@@ -708,13 +735,23 @@ PUSH(r1)
 NEXT
 
 6:				; parse error
+push r3
+push r1
 mov r1, msg
-mov r2, 12
+mov r2, 13
+call _TELL
+pop r2
+pop r1
+call _TELL
+mov r1, nl
+mov r2, 1
 call _TELL
 NEXT
 
 msg:
-.ascii "Parse Error\n"
+.ascii "Parse Error: "
+nl:
+.ascii "\n"
 
 
 NEXT
@@ -735,7 +772,7 @@ NEXT
 
 
 
-defvar(LATEST,6,0,LATEST,link) ; change this to the last thing defined
+defvar(LATEST,6,0,LATEST,name_LATEST) ; change this to the last thing defined
 
 prog:
 	.dw _KILL
